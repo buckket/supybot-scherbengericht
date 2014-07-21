@@ -93,16 +93,16 @@ class Scherbengericht(callbacks.Plugin):
 
         irc.queueMsg(ircmsgs.ban(channel, hostmask))
         if target in irc.state.channels[channel].users:
-            irc.queueMsg(ircmsgs.kick(channel, target, 'Das Volk hat entschieden.'))
+            irc.queueMsg(ircmsgs.kick(channel, target, "Das Volk hat entschieden."))
 
         def unban():
             irc.queueMsg(ircmsgs.unban(channel, hostmask))
 
-        schedule.addEvent(unban, time.time() + int(self.registryValue('ban_duration')))
+        schedule.addEvent(unban, time.time() + int(self.registryValue("ban_duration")))
 
     def _is_voting_enabled(self, irc, msg, reply=False):
         channel = msg.args[0]
-        if self.registryValue('gerichtsbarkeit', channel):
+        if self.registryValue("gerichtsbarkeit", channel):
             return True
         else:
             if reply:
@@ -113,11 +113,11 @@ class Scherbengericht(callbacks.Plugin):
         channel = msg.args[0]
         if not irc.isChannel(channel):
             if reply:
-                irc.reply('Verhandlungen sind öffentlich zu führen!')
+                irc.reply("Verhandlungen sind öffentlich zu führen!")
             return False
         elif irc.nick not in irc.state.channels[channel].ops:
             if reply:
-                irc.reply('%s braucht op ;_;' % irc.nick)
+                irc.reply("%s braucht op ;_;" % irc.nick)
             return False
         else:
             return True
@@ -126,8 +126,8 @@ class Scherbengericht(callbacks.Plugin):
         return "%s@%s" % (target, channel)
 
     def _calculate_voting_threshold(self, irc, msg):
-        voting_min = int(self.registryValue('voting_min'))
-        threshold = math.ceil(len(irc.state.channels[msg.args[0]].users) * int(self.registryValue('voting_quota')))
+        voting_min = int(self.registryValue("voting_min"))
+        threshold = math.ceil(len(irc.state.channels[msg.args[0]].users) * int(self.registryValue("voting_quota")))
         return threshold if threshold > voting_min else voting_min
 
     def abstimmungen(self, irc, msg, args):
@@ -139,7 +139,7 @@ class Scherbengericht(callbacks.Plugin):
         channel = msg.args[0]
         users = irc.state.channels[channel].users
         voting_threshold = self._calculate_voting_threshold(irc, msg)
-        voting_timeout = int(self.registryValue('voting_timeout'))
+        voting_timeout = int(self.registryValue("voting_timeout"))
 
         votes = []
         for voting_id in self.running_votes:
@@ -150,7 +150,7 @@ class Scherbengericht(callbacks.Plugin):
                 voting_threshold,
                 voting.remaining_time(voting_timeout)))
         if votes:
-            irc.reply(', '.join(votes))
+            irc.reply(", ".join(votes))
         else:
             irc.reply("Momentan laufen keine Abstimmungen.")
 
@@ -203,7 +203,7 @@ class Scherbengericht(callbacks.Plugin):
                         irc.queueMsg(ircmsgs.privmsg(channel, message))
                         del self.running_votes[voting_id]
 
-                schedule.addEvent(clean_up, time.time() + int(self.registryValue('voting_timeout')))
+                schedule.addEvent(clean_up, time.time() + int(self.registryValue("voting_timeout")))
 
                 irc.reply("Abstimmung gegen %s gestartet. Weitere Stimmen notwendig: %d" % (
                     target, voting_threshold - 1))
@@ -249,7 +249,7 @@ class Scherbengericht(callbacks.Plugin):
             self._nick_change(irc, voting_id, msg.nick, msg.args[0])
 
     abstimmungen = wrap(abstimmungen)
-    gegen = wrap(gegen, ['nickInChannel'])
+    gegen = wrap(gegen, ["nickInChannel"])
 
 
 Class = Scherbengericht
