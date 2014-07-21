@@ -168,7 +168,7 @@ class Scherbengericht(callbacks.Plugin):
             voting_threshold = self._calculate_voting_threshold(irc, msg)
 
             if target == msg.nick or target == irc.nick:
-                irc.queueMsg(ircmsgs.kick(channel, target, "Snibeti snab XDD"))
+                irc.queueMsg(ircmsgs.kick(channel, msg.nick, "Snibeti snab XDD"))
                 self.doKick(irc, msg)
                 return
 
