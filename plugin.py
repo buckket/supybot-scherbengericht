@@ -33,6 +33,7 @@
 import math
 import time
 
+import supybot.conf as conf
 import supybot.utils as utils
 from supybot.commands import *
 import supybot.plugins as plugins
@@ -40,10 +41,12 @@ import supybot.ircutils as ircutils
 import supybot.callbacks as callbacks
 import supybot.schedule as schedule
 import supybot.ircmsgs as ircmsgs
+import supybot.world as world
 
 
-# TODO: Votes laufen nach X Sekunden ab
-# TODO: Schutzmechanismus einbauen. Trollgefahr!
+# TODO: Votes laufen nach X Sekunden ab -- Nicht sicher ob. :/
+# TODO: Schutzmechanismus einbauen. Trollgefahr!!
+# TODO: Nur Personen einbeziehen, die seit X Zeiteinheiten etwas sagten
 
 
 class Voting(object):
@@ -178,7 +181,7 @@ class Scherbengericht(callbacks.Plugin):
                     voting_count = voting.count_votes(users)
                     if voting_count >= voting_threshold:
                         if target in irc.state.channels[channel].ops:
-                            irc.queueMsg(ircmsgs.privmsg(channel, "Einen Versuch war's wert! :--D"))
+                            irc.queueMsg(ircmsgs.notice(channel, "Einen Versuch war's wert! :--D"))
                             for nick in voting.votes:
                                 self._remove_kebab(irc, channel, nick)
                         else:
@@ -200,7 +203,7 @@ class Scherbengericht(callbacks.Plugin):
                 def clean_up():
                     if voting_id in self.running_votes:
                         message = "Antrag gegen %s ist erfolglos ausgelaufen." % self.running_votes[voting_id].target
-                        irc.queueMsg(ircmsgs.privmsg(channel, message))
+                        irc.queueMsg(ircmsgs.notice(channel, message))
                         del self.running_votes[voting_id]
 
                 schedule.addEvent(clean_up, time.time() + int(self.registryValue("voting_timeout")))
@@ -212,7 +215,7 @@ class Scherbengericht(callbacks.Plugin):
         voting = self.running_votes[voting_id]
         if nick == voting.target:
             if (channel and channel == voting.channel) or not channel:
-                irc.queueMsg(ircmsgs.privmsg(voting.channel, "%s hat den Kanal vor Ende der Abstimmung verlassen." % voting.target))
+                irc.queueMsg(ircmsgs.notice(voting.channel, "%s hat den Kanal vor Ende der Abstimmung verlassen." % voting.target))
                 self._remove_kebab(irc, voting.channel, nick)
                 del self.running_votes[voting_id]
         elif nick in voting.votes:
