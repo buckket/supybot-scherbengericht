@@ -54,5 +54,7 @@ conf.registerGlobalValue(Scherbengericht, 'voting_min',
     registry.PositiveInteger(3, """Mindestzahl der benötigten Stimmen"""))
 conf.registerGlobalValue(Scherbengericht, 'voting_timeout',
     registry.PositiveInteger(300, """Zeit in Sekunden ehe Abstimmung ausläuft"""))
+conf.registerGlobalValue(Scherbengericht, 'voting_min_age',
+    registry.PositiveInteger(300, """Zeit in Sekunden ehe man abstimmen kann"""))
 conf.registerGlobalValue(Scherbengericht, 'ban_duration',
     registry.PositiveInteger(900, """Zeit in Sekunden ehe +b aufgehoben wird"""))

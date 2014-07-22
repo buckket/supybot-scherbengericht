@@ -1,7 +1,7 @@
 supybot-scherbengericht
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Basiert auf der Idee und der Umsetzung von erlehmann:
+Basiert auf der Idee und der Umsetzung von erlehmann und kaiser_franz:
 https://github.com/erlehmann/scherbengericht
 
 This program is free software: you can redistribute it and/or modify

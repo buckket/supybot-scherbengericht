@@ -88,6 +88,7 @@ class Scherbengericht(callbacks.Plugin):
         self.__parent.__init__(irc)
 
         self.running_votes = {}
+        self.recently_joined = []
 
     def _remove_kebab(self, irc, channel, target):
         prefix = irc.state.nickToHostmask(target)
@@ -118,14 +119,17 @@ class Scherbengericht(callbacks.Plugin):
             if reply:
                 irc.reply("Verhandlungen sind öffentlich zu führen!")
             return False
-        elif irc.nick not in irc.state.channels[channel].ops:
+        if irc.nick not in irc.state.channels[channel].ops:
             if reply:
                 irc.reply("%s braucht op ;_;" % irc.nick)
             return False
-        else:
-            return True
+        if self._calculate_id(msg.nick, channel) in self.recently_joined:
+            if reply:
+                irc.reply("Du bist noch nicht lange genug hier um abzustimmen.")
+            return False
+        return True
 
-    def _calculate_voting_id(self, target, channel):
+    def _calculate_id(self, target, channel):
         return "%s@%s" % (target, channel)
 
     def _calculate_voting_threshold(self, irc, msg):
@@ -167,7 +171,7 @@ class Scherbengericht(callbacks.Plugin):
 
             channel = msg.args[0]
             users = irc.state.channels[channel].users
-            voting_id = self._calculate_voting_id(target, channel)
+            voting_id = self._calculate_id(target, channel)
             voting_threshold = self._calculate_voting_threshold(irc, msg)
 
             if target == msg.nick or target == irc.nick:
@@ -225,13 +229,27 @@ class Scherbengericht(callbacks.Plugin):
         voting = self.running_votes[voting_id]
         if old_nick == voting.target:
             voting.target = new_nick
-            new_voting_id = self._calculate_voting_id(new_nick, voting.channel)
+            new_voting_id = self._calculate_id(new_nick, voting.channel)
             self.running_votes[new_voting_id] = self.running_votes.pop(voting_id)
         if old_nick == voting.initiator:
             voting.initiator = new_nick
         if old_nick in voting.votes:
             voting.votes.remove(old_nick)
             voting.votes.append(new_nick)
+
+    def _recently_joined(self, irc, join_id):
+        if join_id not in self.recently_joined:
+            self.recently_joined.append(join_id)
+
+            def remove_recent_join():
+                self.recently_joined.remove(join_id)
+
+            schedule.addEvent(remove_recent_join, time.time() + int(self.registryValue("voting_min_age")))
+
+    def doJoin(self, irc, msg):
+        if self._is_voting_enabled(irc, msg):
+            join_id = self._calculate_id(msg.nick, msg.args[0])
+            self._recently_joined(irc, join_id)
 
     def doPart(self, irc, msg):
         if self._is_voting_enabled(irc, msg):
