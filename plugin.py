@@ -30,6 +30,7 @@
 
 ###
 
+import re
 import math
 import time
 
@@ -44,16 +45,20 @@ import supybot.ircmsgs as ircmsgs
 import supybot.world as world
 
 
-# TODO: Votes laufen nach X Sekunden ab -- Nicht sicher ob. :/
-# TODO: Schutzmechanismus einbauen. Trollgefahr!!
-# TODO: Nur Personen einbeziehen, die seit X Zeiteinheiten etwas sagten
+# This plugin requires the Seen plugin to be loaded.
+# We're using it to calculate active users per channel and to implement an inactivity protection.
+# Beware: In order to work this plugin will manually call flush() each time a vote is initiated.
+from supybot.plugins.Seen.plugin import SeenDB
+seen_filename = conf.supybot.directories.data.dirize('Seen.db')
 
 
 class Voting(object):
-    def __init__(self, channel, target, initiator):
+
+    def __init__(self, channel, target, initiator, threshold):
         self.channel = channel
         self.target = target
         self.initiator = initiator
+        self.threshold = threshold
 
         self.time = time.time()
         self.votes = []
@@ -64,6 +69,13 @@ class Voting(object):
     def add_vote(self, nick):
         if not nick in self.votes:
             self.votes.append(nick)
+            return True
+        else:
+            return False
+
+    def remove_vote(self, nick):
+        if nick in self.votes:
+            self.votes.remove(nick)
             return True
         else:
             return False
@@ -81,14 +93,29 @@ class Voting(object):
 
 
 class Scherbengericht(callbacks.Plugin):
-    """Scherbengericht. Genug gesagt."""
+    """Dieses Plugin ermöglicht die bequeme Einberufung eines Scherbengerichts.
+    Benutzung auf eigene Gefahr. Für Schäden haftet der Verbraucher.
+
+    Probieren sie auch: Nudelgericht.py
+    """
 
     def __init__(self, irc):
         self.__parent = super(Scherbengericht, self)
         self.__parent.__init__(irc)
 
+        # yo dawg, this is mah special irc nick reg exp combined with WEGBUXEN (change the latter if you so desire)
+        self.regexp = re.compile(r"\A([a-z_\-\[\]\\^{}|`][a-z0-9_\-\[\]\\^{}|`]*) wegbuxen!?")
+
         self.running_votes = {}
         self.recently_joined = []
+
+    @staticmethod
+    def _calculate_id(target, channel):
+        return "%s@%s" % (target, channel)
+
+    @staticmethod
+    def _split_id(id):
+        return id.split("@")
 
     def _remove_kebab(self, irc, channel, target):
         prefix = irc.state.nickToHostmask(target)
@@ -110,7 +137,7 @@ class Scherbengericht(callbacks.Plugin):
             return True
         else:
             if reply:
-                irc.reply("Scherbengericht ist in %s nicht gestattet!" % channel)
+                irc.reply("Ein Scherbengericht ist in %s nicht gestattet!" % channel)
             return False
 
     def _check_privileges(self, irc, msg, reply=False):
@@ -125,27 +152,78 @@ class Scherbengericht(callbacks.Plugin):
             return False
         if self._calculate_id(msg.nick, channel) in self.recently_joined:
             if reply:
-                irc.reply("Du bist noch nicht lange genug hier um abzustimmen.")
+                irc.queueMsg(ircmsgs.kick(channel, msg.nick, "Du warst noch nicht lange genug anwesend um abzustimmen!"))
+                self._user_left(irc, msg.nick, channel)
             return False
         return True
 
-    def _calculate_id(self, target, channel):
-        return "%s@%s" % (target, channel)
+    def _calculate_active_user(self, irc, msg):
+        channel = msg.args[0]
+        voting_active_time = int(self.registryValue("voting_active_time"))
 
-    def _calculate_voting_threshold(self, irc, msg):
+        world.flush()
+        seen_db = SeenDB(seen_filename)
+
+        active_users = []
+        for nick in irc.state.channels[channel].users:
+            if nick not in self.recently_joined:
+                try:
+                    results = [[nick, seen_db.seen(channel, nick)]]
+                    if len(results) == 1:
+                        (nick, info) = results[0]
+                        (when, said) = info
+                        if (time.time() - when) <= voting_active_time:
+                            active_users.append(nick)
+                except KeyError:
+                    pass
+
+        return active_users
+
+    def _calculate_voting_threshold(self, irc, msg, active_users=None):
         voting_min = int(self.registryValue("voting_min"))
-        threshold = math.ceil(len(irc.state.channels[msg.args[0]].users) * int(self.registryValue("voting_quota")))
+        voting_quota = float(self.registryValue("voting_quota"))
+
+        if not active_users:
+            active_users = self._calculate_active_user(irc, msg)
+
+        threshold = math.ceil(len(active_users) * voting_quota)
         return threshold if threshold > voting_min else voting_min
+
+    def wahlrecht(self, irc, msg, args):
+        """
+
+        Listet alle Benutzer auf, die das Wahlalter noch nicht erreicht haben.
+        """
+
+        user_list = []
+        for join_id in self.recently_joined:
+            (nick, channel) = self._split_id(join_id)
+            if channel == msg.args[0]:
+                user_list.append(nick)
+        if user_list:
+            irc.reply("Folgende Mitbürger dürfen leider noch nicht abstimmen: %s" % ", ".join(user_list))
+        else:
+            irc.reply("Alle anwesenden Mitbürger dürfen abstimmen.")
+
+    def schwellwert(self, irc, msg, args):
+        """
+
+        Zeigt den momentanen Schwellwert und die Anzahl der aktiven Benutzer.
+        """
+        active_users = self._calculate_active_user(irc, msg)
+        voting_threshold = self._calculate_voting_threshold(irc, msg, active_users)
+        voting_quota = float(self.registryValue("voting_quota"))
+
+        irc.reply("Der Schwellwert liegt momentan bei %d Stimmen (%d aktive User - Quota: %s)" % (voting_threshold, len(active_users), voting_quota))
 
     def abstimmungen(self, irc, msg, args):
         """
 
-        Zeigt alle laufenden Abstimmungen
+        Listet alle laufenden Abstimmungen auf.
         """
 
         channel = msg.args[0]
         users = irc.state.channels[channel].users
-        voting_threshold = self._calculate_voting_threshold(irc, msg)
         voting_timeout = int(self.registryValue("voting_timeout"))
 
         votes = []
@@ -154,88 +232,101 @@ class Scherbengericht(callbacks.Plugin):
             votes.append("[ Abstimmung gegen %s (%d von %d Stimmen) noch %d Sekunden ]" % (
                 voting.target,
                 voting.count_votes(users),
-                voting_threshold,
+                voting.threshold,
                 voting.remaining_time(voting_timeout)))
         if votes:
             irc.reply(", ".join(votes))
         else:
             irc.reply("Momentan laufen keine Abstimmungen.")
 
-    def gegen(self, irc, msg, args, target):
-        """<target>
-
-        Das Scherbengericht gegen <target> wird eröffnet :3
-        """
-
+    def _gegen(self, irc, msg, target):
         if self._is_voting_enabled(irc, msg, reply=True) and self._check_privileges(irc, msg, reply=True):
 
             channel = msg.args[0]
             users = irc.state.channels[channel].users
             voting_id = self._calculate_id(target, channel)
-            voting_threshold = self._calculate_voting_threshold(irc, msg)
 
             if target == msg.nick or target == irc.nick:
                 irc.queueMsg(ircmsgs.kick(channel, msg.nick, "Snibeti snab XDD"))
-                self.doKick(irc, msg)
+                self._user_left(irc, msg.nick, channel)
                 return
 
             if voting_id in self.running_votes:
                 voting = self.running_votes[voting_id]
                 if voting.add_vote(msg.nick):
                     voting_count = voting.count_votes(users)
-                    if voting_count >= voting_threshold:
+                    if voting_count >= voting.threshold:
                         if target in irc.state.channels[channel].ops:
                             irc.queueMsg(ircmsgs.notice(channel, "Einen Versuch war's wert! :--D"))
                             for nick in voting.votes:
-                                self._remove_kebab(irc, channel, nick)
+                                irc.queueMsg(ircmsgs.kick(channel, nick, "Bis zum nächsten mal!"))
+                                self._user_left(irc, nick, channel)
                         else:
                             self._remove_kebab(irc, channel, target)
                         del self.running_votes[voting_id]
                     else:
-                        irc.reply("Stimme gegen %s registriert. Weitere Stimmen notwendig: %d" % (
-                            target, voting_threshold - voting_count))
+                        irc.reply("Stimme gegen %s registriert. Braucht noch %d weitere Stimme(n)." % (
+                            target, voting.threshold - voting_count))
                 else:
                     voting_count = voting.count_votes(users)
-                    irc.reply("Du hast bereits gegen %s gestimmt! Weitere Stimmen notwendig: %d" % (
-                        target, voting_threshold - voting_count))
+                    irc.reply("Du hast bereits gegen %s gestimmt! Braucht noch %d weitere Stimme(n)." % (
+                        target, voting.threshold - voting_count))
 
             else:
-                voting = Voting(channel, target, msg.nick)
-                self.running_votes[voting_id] = voting
+                active_users = self._calculate_active_user(irc, msg)
+
+                if target not in active_users:
+                    irc.reply("%s ist inaktiv. Antrag abgelehnt." % target)
+                    return
+
+                voting_threshold = self._calculate_voting_threshold(irc, msg, active_users)
+                voting = Voting(channel, target, msg.nick, voting_threshold)
                 voting.add_vote(msg.nick)
+
+                self.running_votes[voting_id] = voting
 
                 def clean_up():
                     if voting_id in self.running_votes:
-                        message = "Antrag gegen %s ist erfolglos ausgelaufen." % self.running_votes[voting_id].target
+                        message = "Abstimmung gegen %s ist erfolglos ausgelaufen." % self.running_votes[voting_id].target
                         irc.queueMsg(ircmsgs.notice(channel, message))
                         del self.running_votes[voting_id]
 
                 schedule.addEvent(clean_up, time.time() + int(self.registryValue("voting_timeout")))
 
-                irc.reply("Abstimmung gegen %s gestartet. Weitere Stimmen notwendig: %d" % (
-                    target, voting_threshold - 1))
+                irc.reply("Abstimmung gegen %s gestartet. Braucht noch %d weitere Stimme(n)." % (
+                    target, voting.threshold - 1))
 
-    def _user_left(self, irc, voting_id, nick, channel=None):
-        voting = self.running_votes[voting_id]
-        if nick == voting.target:
-            if (channel and channel == voting.channel) or not channel:
-                irc.queueMsg(ircmsgs.notice(voting.channel, "%s hat den Kanal vor Ende der Abstimmung verlassen." % voting.target))
-                self._remove_kebab(irc, voting.channel, nick)
-                del self.running_votes[voting_id]
-        elif nick in voting.votes:
-            del voting.votes[nick]
+    def gegen(self, irc, msg, args, target):
+        """<target>
 
-    def _nick_change(self, irc, voting_id, old_nick, new_nick):
-        voting = self.running_votes[voting_id]
-        if old_nick == voting.target:
-            voting.target = new_nick
-            new_voting_id = self._calculate_id(new_nick, voting.channel)
-            self.running_votes[new_voting_id] = self.running_votes.pop(voting_id)
-        if old_nick == voting.initiator:
-            voting.initiator = new_nick
-        if old_nick in voting.votes:
-            voting.votes.remove(old_nick)
-            voting.votes.append(new_nick)
+        Das Scherbengericht gegen <target> wird eröffnet, bzw. Stimmen gegen <target> gezählt.
+        """
+
+        self._gegen(irc, msg, target)
+
+    def _user_left(self, irc, nick, channel=None):
+        for voting_id in list(self.running_votes):
+            voting = self.running_votes[voting_id]
+            if nick == voting.target:
+                if (channel and channel == voting.channel) or not channel:
+                    irc.queueMsg(ircmsgs.notice(voting.channel, "%s hat den Kanal vor Ende der Abstimmung verlassen." % voting.target))
+                    self._remove_kebab(irc, voting.channel, nick)
+                    del self.running_votes[voting_id]
+            elif nick in voting.votes:
+                voting.votes.remove(nick)
+
+    def _nick_change(self, irc, old_nick, new_nick):
+        for voting_id in list(self.running_votes):
+            voting = self.running_votes[voting_id]
+            if old_nick == voting.target:
+                voting.target = new_nick
+                new_voting_id = self._calculate_id(new_nick, voting.channel)
+                self.running_votes[new_voting_id] = self.running_votes.pop(voting_id)
+            if old_nick == voting.initiator:
+                voting.initiator = new_nick
+            if old_nick in voting.votes:
+                voting.votes.remove(old_nick)
+                voting.votes.append(new_nick)
 
     def _recently_joined(self, irc, join_id):
         if join_id not in self.recently_joined:
@@ -253,24 +344,33 @@ class Scherbengericht(callbacks.Plugin):
 
     def doPart(self, irc, msg):
         if self._is_voting_enabled(irc, msg):
-            for voting_id in list(self.running_votes):
-                self._user_left(irc, voting_id, msg.nick, channel=msg.args[0])
+            self._user_left(irc, msg.nick, channel=msg.args[0])
 
     def doKick(self, irc, msg):
         if self._is_voting_enabled(irc, msg):
-            for voting_id in list(self.running_votes):
-                self._user_left(irc, voting_id, msg.nick, channel=msg.args[0])
+            self._user_left(irc, msg.nick, channel=msg.args[0])
 
     def doQuit(self, irc, msg):
         for voting_id in list(self.running_votes):
-            self._user_left(irc, voting_id, msg.nick)
+            self._user_left(irc, msg.nick)
 
     def doNick(self, irc, msg):
         for voting_id in list(self.running_votes):
-            self._nick_change(irc, voting_id, msg.nick, msg.args[0])
+            self._nick_change(irc, msg.nick, msg.args[0])
 
+    def doPrivmsg(self, irc, msg):
+        if ircmsgs.isCtcp(msg) and not ircmsgs.isAction(msg):
+            return
+        if ircutils.isChannel(msg.args[0]) and self._is_voting_enabled(irc, msg):
+            channel = msg.args[0]
+            message = ircutils.stripFormatting(msg.args[1])
+            match = self.regexp.match(message)
+            if match and match.group(1) in irc.state.channels[channel].users:
+                self._gegen(irc, msg, match.group(1))
+
+    wahlrecht = wrap(wahlrecht)
+    schwellwert = wrap(schwellwert)
     abstimmungen = wrap(abstimmungen)
     gegen = wrap(gegen, ["nickInChannel"])
-
 
 Class = Scherbengericht

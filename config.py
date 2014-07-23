@@ -47,14 +47,16 @@ Scherbengericht = conf.registerPlugin('Scherbengericht')
 # conf.registerGlobalValue(Scherbengericht, 'someConfigVariableName',
 #     registry.Boolean(False, """Help for someConfigVariableName."""))
 conf.registerChannelValue(Scherbengericht, 'gerichtsbarkeit',
-    registry.Boolean(False, """Erlaube Scherbengericht pro Kanal"""))
+    registry.Boolean(False, """Erlaube Scherbengericht in diesem Kanal"""))
 conf.registerGlobalValue(Scherbengericht, 'voting_quota',
-    registry.PositiveFloat(0.3, """Prozent der benötigten Stimmen"""))
+    registry.PositiveFloat(0.4, """Prozent der für eine eroglreiche Abstimmung benötigten aktiven Benutzer"""))
 conf.registerGlobalValue(Scherbengericht, 'voting_min',
-    registry.PositiveInteger(3, """Mindestzahl der benötigten Stimmen"""))
+    registry.PositiveInteger(3, """Mindestanzahl der benötigten Stimmen für eine erfolgreiche Abstimmung"""))
 conf.registerGlobalValue(Scherbengericht, 'voting_timeout',
-    registry.PositiveInteger(300, """Zeit in Sekunden ehe Abstimmung ausläuft"""))
+    registry.PositiveInteger(300, """Zeit in Sekunden ehe eine Abstimmung ausläuft"""))
 conf.registerGlobalValue(Scherbengericht, 'voting_min_age',
-    registry.PositiveInteger(300, """Zeit in Sekunden ehe man abstimmen kann"""))
+    registry.PositiveInteger(300, """Zeit in Sekunden ehe neue Benutzer abstimmen können"""))
+conf.registerGlobalValue(Scherbengericht, 'voting_active_time',
+    registry.PositiveInteger(900, """Zeit in Sekunden die zur Berechnung der aktiven Benutzer herangezogen wird"""))
 conf.registerGlobalValue(Scherbengericht, 'ban_duration',
-    registry.PositiveInteger(900, """Zeit in Sekunden ehe +b aufgehoben wird"""))
+    registry.PositiveInteger(900, """Zeit in Sekunden ehe eine ausgesprochene Verbannung aufgehoben wird"""))
