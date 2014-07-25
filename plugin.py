@@ -104,7 +104,7 @@ class Scherbengericht(callbacks.Plugin):
         self.__parent.__init__(irc)
 
         # yo dawg, this is mah special irc nick reg exp combined with WEGBUXEN (change the latter if you so desire)
-        self.regexp = re.compile(r"\A([a-z_\-\[\]\\^{}|`][a-z0-9_\-\[\]\\^{}|`]*) wegbuxen!?")
+        self.regexp = re.compile(r"\A([a-zA-Z_\-\[\]\\^{}|`][a-zA-Z0-9_\-\[\]\\^{}|`]*) wegbuxen!?")
 
         self.running_votes = {}
         self.recently_joined = []
