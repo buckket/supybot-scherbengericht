@@ -351,12 +351,10 @@ class Scherbengericht(callbacks.Plugin):
             self._user_left(irc, msg.nick, channel=msg.args[0])
 
     def doQuit(self, irc, msg):
-        for voting_id in list(self.running_votes):
-            self._user_left(irc, msg.nick)
+        self._user_left(irc, msg.nick)
 
     def doNick(self, irc, msg):
-        for voting_id in list(self.running_votes):
-            self._nick_change(irc, msg.nick, msg.args[0])
+        self._nick_change(irc, msg.nick, msg.args[0])
 
     def doPrivmsg(self, irc, msg):
         if ircmsgs.isCtcp(msg) and not ircmsgs.isAction(msg):
