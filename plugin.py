@@ -67,7 +67,7 @@ class Voting(object):
         return (self.time + voting_timeout) - time.time()
 
     def add_vote(self, nick):
-        if not nick in self.votes:
+        if nick not in self.votes:
             self.votes.append(nick)
             return True
         else:
@@ -133,19 +133,18 @@ class Scherbengericht(callbacks.Plugin):
 
     def _is_voting_enabled(self, irc, msg, reply=False):
         channel = msg.args[0]
-        if self.registryValue("gerichtsbarkeit", channel):
+        if irc.isChannel(channel) and self.registryValue("gerichtsbarkeit", channel):
             return True
         else:
             if reply:
-                irc.reply("Ein Scherbengericht ist in %s nicht gestattet!" % channel)
+                if irc.isChannel(channel):
+                    irc.reply("Ein Scherbengericht ist in %s nicht gestattet!" % channel)
+                else:
+                    irc.reply("Ein Scherbengericht ist stets öffentlich zu führen!")
             return False
 
     def _check_privileges(self, irc, msg, reply=False):
         channel = msg.args[0]
-        if not irc.isChannel(channel):
-            if reply:
-                irc.reply("Verhandlungen sind öffentlich zu führen!")
-            return False
         if irc.nick not in irc.state.channels[channel].ops:
             if reply:
                 irc.reply("%s braucht op ;_;" % irc.nick)
@@ -194,50 +193,51 @@ class Scherbengericht(callbacks.Plugin):
 
         Listet alle Benutzer auf, die das Wahlalter noch nicht erreicht haben.
         """
-
-        user_list = []
-        for join_id in self.recently_joined:
-            (nick, channel) = self._split_id(join_id)
-            if channel == msg.args[0]:
-                user_list.append(nick)
-        if user_list:
-            irc.reply("Folgende Mitbürger dürfen leider noch nicht abstimmen: %s" % ", ".join(user_list))
-        else:
-            irc.reply("Alle anwesenden Mitbürger dürfen abstimmen.")
+        if self._is_voting_enabled(irc, msg, reply=True):
+            user_list = []
+            for join_id in self.recently_joined:
+                (nick, channel) = self._split_id(join_id)
+                if channel == msg.args[0]:
+                    user_list.append(nick)
+            if user_list:
+                irc.reply("Folgende Mitbürger dürfen leider noch nicht abstimmen: %s" % ", ".join(user_list))
+            else:
+                irc.reply("Alle anwesenden Mitbürger dürfen abstimmen.")
 
     def schwellwert(self, irc, msg, args):
         """
 
         Zeigt den momentanen Schwellwert und die Anzahl der aktiven Benutzer.
         """
-        active_users = self._calculate_active_user(irc, msg)
-        voting_threshold = self._calculate_voting_threshold(irc, msg, active_users)
-        voting_quota = float(self.registryValue("voting_quota"))
+        if self._is_voting_enabled(irc, msg, reply=True):
+            active_users = self._calculate_active_user(irc, msg)
+            voting_threshold = self._calculate_voting_threshold(irc, msg, active_users)
+            voting_quota = float(self.registryValue("voting_quota"))
 
-        irc.reply("Der Schwellwert liegt momentan bei %d Stimmen (%d aktive User - Quota: %s)" % (voting_threshold, len(active_users), voting_quota))
+            irc.reply("Der Schwellwert liegt momentan bei %d Stimmen (%d aktive User - Quota: %s)" % (voting_threshold, len(active_users), voting_quota))
 
     def abstimmungen(self, irc, msg, args):
         """
 
         Listet alle laufenden Abstimmungen auf.
         """
+        if self._is_voting_enabled(irc, msg, reply=True):
+            channel = msg.args[0]
+            users = irc.state.channels[channel].users
+            voting_timeout = int(self.registryValue("voting_timeout"))
 
-        channel = msg.args[0]
-        users = irc.state.channels[channel].users
-        voting_timeout = int(self.registryValue("voting_timeout"))
-
-        votes = []
-        for voting_id in self.running_votes:
-            voting = self.running_votes[voting_id]
-            votes.append("[ Abstimmung gegen %s (%d von %d Stimmen) noch %d Sekunden ]" % (
-                voting.target,
-                voting.count_votes(users),
-                voting.threshold,
-                voting.remaining_time(voting_timeout)))
-        if votes:
-            irc.reply(", ".join(votes))
-        else:
-            irc.reply("Momentan laufen keine Abstimmungen.")
+            votes = []
+            for voting_id in self.running_votes:
+                voting = self.running_votes[voting_id]
+                votes.append("[ Abstimmung gegen %s (%d von %d Stimmen) noch %d Sekunden ]" % (
+                    voting.target,
+                    voting.count_votes(users),
+                    voting.threshold,
+                    voting.remaining_time(voting_timeout)))
+            if votes:
+                irc.reply(", ".join(votes))
+            else:
+                irc.reply("Momentan laufen keine Abstimmungen.")
 
     def _gegen(self, irc, msg, target):
         if self._is_voting_enabled(irc, msg, reply=True) and self._check_privileges(irc, msg, reply=True):
@@ -301,7 +301,6 @@ class Scherbengericht(callbacks.Plugin):
 
         Das Scherbengericht gegen <target> wird eröffnet, bzw. Stimmen gegen <target> gezählt.
         """
-
         self._gegen(irc, msg, target)
 
     def _user_left(self, irc, nick, channel=None):
