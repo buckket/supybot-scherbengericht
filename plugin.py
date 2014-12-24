@@ -117,6 +117,13 @@ class Scherbengericht(callbacks.Plugin):
     def _split_id(id):
         return id.split("@")
 
+    @staticmethod
+    def _can_be_kicked(irc, channel, target):
+        if target in irc.state.channels[channel].users and target not in irc.state.channels[channel].ops:
+            return True
+        else:
+            return False
+
     def _remove_kebab(self, irc, channel, target):
         prefix = irc.state.nickToHostmask(target)
         host = ircutils.hostFromHostmask(prefix)
@@ -247,9 +254,10 @@ class Scherbengericht(callbacks.Plugin):
             voting_id = self._calculate_id(target, channel)
 
             if target == msg.nick or target == irc.nick:
-                irc.queueMsg(ircmsgs.kick(channel, msg.nick, "Snibeti snab XDD"))
-                self._user_left(irc, msg.nick, channel)
-                return
+                if self._can_be_kicked(irc, channel, msg.nick):
+                    irc.queueMsg(ircmsgs.kick(channel, msg.nick, "Snibeti snab XDD"))
+                    self._user_left(irc, msg.nick, channel)
+                    return
 
             if voting_id in self.running_votes:
                 voting = self.running_votes[voting_id]
@@ -259,8 +267,9 @@ class Scherbengericht(callbacks.Plugin):
                         if target in irc.state.channels[channel].ops:
                             irc.queueMsg(ircmsgs.notice(channel, "Einen Versuch war's wert! :--D"))
                             for nick in voting.votes:
-                                irc.queueMsg(ircmsgs.kick(channel, nick, "Bis zum nächsten mal!"))
-                                self._user_left(irc, nick, channel)
+                                if self._can_be_kicked(irc, channel, nick):
+                                    irc.queueMsg(ircmsgs.kick(channel, nick, "Bis zum nächsten mal!"))
+                                    self._user_left(irc, nick, channel)
                         else:
                             self._remove_kebab(irc, channel, target)
                         del self.running_votes[voting_id]
